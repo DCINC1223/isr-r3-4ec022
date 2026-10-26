@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Island Residence - R3 design review - Interactive 3D</title>
+<!-- Design review only; not for fabrication. -->
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font-sans, system-ui, -apple-system, Segoe UI, sans-serif); display: flex; flex-direction: column; background: #f6f6f4; color: #1d252b; }
+  #wrap { position: relative; flex: 1 1 auto; min-height: 420px; overflow: hidden; background: #dde2e6; }
+  #wrap canvas { display: block; touch-action: none; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px 10px 0; align-items: center; }
+  .bar > span { font-size: 12px; opacity: .7; margin-right: 2px; min-width: 62px; }
+  button { font: inherit; font-size: 12.5px; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+           border: 1px solid #c9c9c9; background: #f2f2f2; color: #222; }
+  button:hover { background: #e8e8e4; }
+  button.on { background: #2b3a46; color: #fff; border-color: transparent; }
+  #rooms button { font-weight: 600; }
+  #info { position: absolute; left: 10px; bottom: 10px; max-width: min(560px, 74%); background: rgba(18, 22, 26, .82); color: #fff;
+          font-size: 12.5px; line-height: 1.42; padding: 8px 11px; border-radius: 7px; pointer-events: none; white-space: pre-line; max-height: 46%; overflow: hidden; }
+  #stamp { position: absolute; left: 10px; top: 8px; font-size: 11.5px; letter-spacing: .02em; color: #26313a; background: rgba(255, 255, 255, .85);
+           padding: 4px 8px; border-radius: 5px; pointer-events: none; max-width: calc(100% - 150px); }
+  #helpbtn { position: absolute; right: 10px; top: 8px; }
+  #help { position: absolute; right: 10px; top: 44px; width: min(330px, 80%); background: rgba(255,255,255,.96); border-radius: 8px;
+          padding: 10px 14px 12px; font-size: 13px; line-height: 1.5; box-shadow: 0 2px 14px rgba(0,0,0,.2); display: none; }
+  #help h3 { margin: 0 0 6px; font-size: 14px; }
+  #help ol { margin: 0; padding-left: 18px; }
+  #note { position: absolute; right: 10px; bottom: 10px; font-size: 11px; color: #26313a; background: rgba(255,255,255,.75); padding: 3px 7px; border-radius: 5px; pointer-events: none; }
+  #pad { height: 8px; }
+</style>
+</head>
+<body>
+<div class="bar" id="rooms"><span>Room</span></div>
+<div id="wrap">
+  <div id="stamp">DILLON CABINET COMPANY &middot; Island Residence &middot; R3 design review &middot; options for discussion &middot; not for fabrication</div>
+  <button id="helpbtn">How to explore</button>
+  <div id="help"><h3>How to explore</h3>
+    <ol>
+      <li><b>Pick a room</b> from the Room buttons above the picture.</li>
+      <li><b>Drag</b> to rotate; <b>scroll or pinch</b> to zoom; right-drag (two fingers) to pan.</li>
+      <li><b>Views</b> jump to the overview, each wall straight-on, or the top plan.</li>
+      <li><b>Show</b> switches doors, wall cutaway, ceiling, dimensions and labels on or off.</li>
+      <li><b>Options</b> (color, hardware, countertop) are for discussion; try each one.</li>
+      <li><b>Click any cabinet</b> to read its size, fronts and notes.</li>
+    </ol></div>
+  <div id="info">Click any cabinet or appliance for its size, fronts and notes.</div>
+  <div id="note">Colors are screen approximations. Verify against physical samples.</div>
+</div>
+<div class="bar" id="views"><span>Views</span></div>
+<div class="bar" id="toggles"><span>Show</span></div>
+<div id="optbars"></div>
+<div id="pad"></div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const MODEL = {"job":"Island Residence","revision":"R3 design review draft","rooms":[{"room":"Coffee Bar","status":"pending-10-05-cv","walls":[{"id":"W1","name":"South wall (opening wall)","from":[0,45.5],"to":[70.75,45.5],"openings":[{"type":"window","label":"WINDOW (SILL/HEAD ASSUMED)","x_from_wall_start":16.65,"width":30.1,"sill_z":42.0,"head_z":84.0}]},{"id":"W2","name":"East wall","from":[70.75,45.5],"to":[70.75,12.0],"openings":[]},{"id":"W3","name":"East shoulder","from":[70.75,12.0],"to":[47.75,12.0],"openings":[]},{"id":"W4","name":"Recess east side","from":[47.75,12.0],"to":[47.75,0.0],"openings":[]},{"id":"W5","name":"Recess back wall","from":[47.75,0.0],"to":[16,0.0],"openings":[{"type":"door","label":"ENTRY (ASSUMED) IN RECESS","x_from_wall_start":0.875,"width":30.0,"sill_z":0.0,"head_z":82.0}]},{"id":"W6","name":"Recess west side","from":[16,0.0],"to":[16,12.0],"openings":[]},{"id":"W7","name":"West shoulder","from":[16,12.0],"to":[0,12.0],"openings":[]},{"id":"W8","name":"West wall","from":[0,12.0],"to":[0,45.5],"openings":[]}],"countertops":[{"id":"CB-TOP","outline":[[0,45.5],[70.75,45.5],[70.75,26.0],[0,26.0]],"thickness":1.25,"top_z":36,"material":"stone TBD","overhangs":"1 front"}],"splash":[],"ceiling_height":null,"cabinets":[{"id":"CB-1","type":"appliance","x":19.5,"y":45.5,"rot_deg":180.0,"width":19.0,"depth":18.5,"height":34.0,"z_bottom":0.0,"appliance":"Summit FF195IF-class 19 in panel-ready undercounter refrigerator (18 D) - TBD","plan":[[19.5,45.5],[0.5,45.5],[0.5,27.0],[19.5,27.0]],"fronts":[{"kind":"appliance-panel","u":2.0,"v":2.0,"w":15.0,"h":30.0}]},{"id":"CB-2","type":"base","x":43.5,"y":45.5,"rot_deg":180.0,"width":24.0,"depth":18.5,"height":34.75,"z_bottom":0.0,"appliance":"Elkay SCUH1012SH undermount, Perrin & Rowe U.SB60D1LM","plan":[[43.5,45.5],[19.5,45.5],[19.5,27.0],[43.5,27.0]],"fronts":[{"kind":"drawer","u":2.0,"v":26.75,"w":20.0,"h":6.0},{"kind":"door","u":2.0,"v":6.0,"w":10.0,"h":18.75,"hinge":"L"},{"kind":"door","u":12.0,"v":6.0,"w":10.0,"h":18.75,"hinge":"R"}]},{"id":"CB-3","type":"base","x":67.5,"y":45.5,"rot_deg":180.0,"width":24.0,"depth":18.5,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[67.5,45.5],[43.5,45.5],[43.5,27.0],[67.5,27.0]],"fronts":[{"kind":"drawer","u":2.0,"v":25.166666666666668,"w":20.0,"h":7.583333333333333},{"kind":"drawer","u":2.0,"v":15.583333333333336,"w":20.0,"h":7.583333333333333},{"kind":"drawer","u":2.0,"v":6.000000000000003,"w":20.0,"h":7.583333333333333}]},{"id":"CB-F","type":"filler","x":70.75,"y":45.5,"rot_deg":180.0,"width":3.25,"depth":18.5,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[70.75,45.5],[67.5,45.5],[67.5,27.0],[70.75,27.0]],"fronts":[]},{"id":"CB-U1","type":"upper","x":14.65,"y":45.5,"rot_deg":180.0,"width":14.15,"depth":12.0,"height":30.0,"z_bottom":54.0,"appliance":"","plan":[[14.65,45.5],[0.5,45.5],[0.5,33.5],[14.65,33.5]],"fronts":[{"kind":"glass-door","u":2.0,"v":2.0,"w":10.15,"h":26.0,"hinge":"L"}]},{"id":"CB-U2","type":"upper","x":70.75,"y":45.5,"rot_deg":180.0,"width":22.0,"depth":12.0,"height":30.0,"z_bottom":54.0,"appliance":"","plan":[[70.75,45.5],[48.75,45.5],[48.75,33.5],[70.75,33.5]],"fronts":[{"kind":"glass-door","u":2.0,"v":2.0,"w":18.0,"h":26.0,"hinge":"L"}]}],"finishes":{"cabinet":"Tafisa HG834 Iron Horse High Gloss","countertop":""}},{"room":"Her Closet","status":"pending-10-05-cv","walls":[{"id":"W1","name":"North wall (rear, cabinet wall)","from":[0,0],"to":[121,0],"openings":[]},{"id":"W2","name":"East wall","from":[121,0],"to":[121,93.75],"openings":[{"type":"door","label":"ENTRY DOOR 36 (ASSUMED)","x_from_wall_start":10.4,"width":36,"sill_z":0.0,"head_z":82.0}]},{"id":"W3","name":"South wall","from":[121,93.75],"to":[0,93.75],"openings":[{"type":"window","label":"WINDOW (POSITION SCALED, SILL/HEAD ASSUMED)","x_from_wall_start":52.4,"width":35.0,"sill_z":42.0,"head_z":84.0}]},{"id":"W4","name":"West wall","from":[0,93.75],"to":[0,0],"openings":[]}],"countertops":[],"splash":[],"ceiling_height":null,"cabinets":[{"id":"HC-1","type":"tall","x":0.0,"y":0.0,"rot_deg":0.0,"width":18.0,"depth":14.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[0.0,0.0],[18.0,0.0],[18.0,14.0],[0.0,14.0]],"fronts":[{"kind":"open","u":2.0,"v":6.0,"w":14.0,"h":76.0}]},{"id":"HC-2","type":"base","x":18.75,"y":0.0,"rot_deg":0.0,"width":24.8125,"depth":22.0,"height":36.0,"z_bottom":0.0,"appliance":"","plan":[[18.75,0.0],[43.5625,0.0],[43.5625,22.0],[18.75,22.0]],"fronts":[{"kind":"drawer","u":2,"v":29.0,"w":20.8125,"h":5.5},{"kind":"drawer","u":2,"v":22.0,"w":20.8125,"h":5.5},{"kind":"drawer","u":2,"v":15.0,"w":20.8125,"h":5.5},{"kind":"safe","u":2,"v":0.0,"w":20.8125,"h":13.5}]},{"id":"HC-2U","type":"upper","x":18.75,"y":0.0,"rot_deg":0.0,"width":24.8125,"depth":14.0,"height":42.0,"z_bottom":42.0,"appliance":"","plan":[[18.75,0.0],[43.5625,0.0],[43.5625,14.0],[18.75,14.0]],"fronts":[{"kind":"open","u":2.0,"v":2.0,"w":20.8125,"h":38.0}]},{"id":"HC-3","type":"tall","x":44.3125,"y":0.0,"rot_deg":0.0,"width":38.3125,"depth":24.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[44.3125,0.0],[82.625,0.0],[82.625,24.0],[44.3125,24.0]],"fronts":[{"kind":"hang-double","u":0.75,"v":0,"w":0,"h":0}]},{"id":"HC-4","type":"tall","x":82.625,"y":0.0,"rot_deg":0.0,"width":38.375,"depth":24.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[82.625,0.0],[121.0,0.0],[121.0,24.0],[82.625,24.0]],"fronts":[{"kind":"hang-long","u":0.75,"v":0,"w":0,"h":0}]},{"id":"HC-5","type":"tall","x":0.0,"y":93.75,"rot_deg":-90.0,"width":69.75,"depth":24.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[0.0,93.75],[0.0,24.0],[24.0,24.0],[24.0,93.75]],"fronts":[{"kind":"hang-double","u":0.75,"v":0,"w":0,"h":0}]},{"id":"HC-6","type":"tall","x":121.0,"y":49.0,"rot_deg":90.0,"width":44.75,"depth":14.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[121.0,49.0],[121.0,93.75],[107.0,93.75],[107.0,49.0]],"fronts":[{"kind":"open","u":2.0,"v":6.0,"w":40.75,"h":76.0}]},{"id":"HC-7","type":"base","x":75.2,"y":93.75,"rot_deg":180.0,"width":48.0,"depth":16.0,"height":20.0,"z_bottom":0.0,"appliance":"","plan":[[75.2,93.75],[27.2,93.75],[27.2,77.75],[75.2,77.75]],"fronts":[{"kind":"drawer","u":2,"v":4.0,"w":22,"h":14.0},{"kind":"drawer","u":24,"v":4.0,"w":22,"h":14.0}]}],"finishes":{"cabinet":"Tafisa M2031 Creme De La Creme","countertop":""}},{"room":"His Closet","status":"pending-10-05-cv","walls":[{"id":"W1","name":"South wall (opening wall)","from":[0,47.0],"to":[64.5,47.0],"openings":[{"type":"window","label":"WINDOW (SILL/HEAD ASSUMED)","x_from_wall_start":18.6,"width":31.8,"sill_z":42.0,"head_z":84.0}]},{"id":"W2","name":"East wall","from":[64.5,47.0],"to":[64.5,12.0],"openings":[]},{"id":"W3","name":"East shoulder","from":[64.5,12.0],"to":[51.0,12.0],"openings":[]},{"id":"W4","name":"Recess east side","from":[51.0,12.0],"to":[51.0,0.0],"openings":[]},{"id":"W5","name":"Recess back wall","from":[51.0,0.0],"to":[19.25,0.0],"openings":[{"type":"door","label":"ENTRY (ASSUMED) IN RECESS","x_from_wall_start":0.875,"width":30.0,"sill_z":0.0,"head_z":82.0}]},{"id":"W6","name":"Recess west side","from":[19.25,0.0],"to":[19.25,12.0],"openings":[]},{"id":"W7","name":"West shoulder","from":[19.25,12.0],"to":[0,12.0],"openings":[]},{"id":"W8","name":"West wall","from":[0,12.0],"to":[0,47.0],"openings":[]}],"countertops":[],"splash":[],"ceiling_height":null,"cabinets":[{"id":"HS-1","type":"tall","x":0.0,"y":47.0,"rot_deg":-90.0,"width":35.0,"depth":24.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[0.0,47.0],[0.0,12.0],[24.0,12.0],[24.0,47.0]],"fronts":[{"kind":"hang-double","u":0.75,"v":0,"w":0,"h":0}]},{"id":"HS-2","type":"tall","x":64.5,"y":12.0,"rot_deg":90.0,"width":35.0,"depth":14.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[64.5,12.0],[64.5,47.0],[50.5,47.0],[50.5,12.0]],"fronts":[{"kind":"door","u":2.0,"v":6.0,"w":15.5,"h":76.0,"hinge":"L"},{"kind":"door","u":17.5,"v":6.0,"w":15.5,"h":76.0,"hinge":"R"}]},{"id":"HS-3","type":"base","x":50.5,"y":47.0,"rot_deg":180.0,"width":26.0,"depth":14.0,"height":30.0,"z_bottom":0.0,"appliance":"","plan":[[50.5,47.0],[24.5,47.0],[24.5,33.0],[50.5,33.0]],"fronts":[{"kind":"drawer","u":2.0,"v":22.0,"w":22.0,"h":6.0},{"kind":"drawer","u":2.0,"v":14.0,"w":22.0,"h":6.0},{"kind":"drawer","u":2.0,"v":6.0,"w":22.0,"h":6.0}]}],"finishes":{"cabinet":"Tafisa HG834 Iron Horse High Gloss","countertop":""}},{"room":"Kitchen","status":"drawn-10-20","walls":[{"id":"W1","name":"North wall (fridge / corner run), length 296 3/8","from":[0,0],"to":[296.375,0],"openings":[{"type":"opening","label":"Unlabeled floor-to-head opening in north wall (door/slider; type not printed)","x_from_wall_start":25.6,"width":86.4,"sill_z":0,"head_z":84.2}]},{"id":"W2","name":"East / range wall, length 230","from":[296.375,0],"to":[296.375,230],"openings":[{"type":"window","label":"East window 1 (north of range)","x_from_wall_start":44.125,"width":28.5,"sill_z":38.7,"head_z":93.7},{"type":"window","label":"East window 2 (south of range)","x_from_wall_start":146.375,"width":28.5,"sill_z":38.7,"head_z":93.7}]},{"id":"W3","name":"South edge (open; no wall printed)","from":[0,235.8125],"to":[296.375,230],"openings":[]},{"id":"W4","name":"West / slider wall, length 235 13/16","from":[0,0],"to":[0,235.8125],"openings":[{"type":"slider","label":"West sliding doors (type/brand not printed)","x_from_wall_start":46.1,"width":138.5,"sill_z":0,"head_z":93.75}]}],"countertops":[{"id":"CT-W","outline":[[0,0],[25,0],[25,44.5],[0,44.5]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"25 deep ASSUMED (leader 25 at #1)"},{"id":"CT-N","outline":[[217.125,0],[296.375,0],[296.375,25],[217.125,25]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"1 in front overhang over 24 box ASSUMED; seam with CT-E1 not printed"},{"id":"CT-E1","outline":[[271.375,25],[296.375,25],[296.375,85.5],[271.375,85.5]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"1 in front ASSUMED"},{"id":"CT-E2","outline":[[271.375,133.5],[296.375,133.5],[296.375,195],[271.375,195]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"1 in front ASSUMED"},{"id":"CT-PSW","outline":[[-1,193.85],[58,193.85],[58,226.35],[-1,226.35]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"59 x 32.5 blank over 57-wide cabinets (25 deep): 1 in each end and north, ~6.5 south (seating side); runs 1 in into wall for scribe"},{"id":"CT-PSE","outline":[[238.375,193.85],[297.375,193.85],[297.375,226.35],[238.375,226.35]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"59 x 32.5 blank spanning #16 (33) + 24 in open bay; 1 in into east wall"},{"id":"CT-ISL","outline":[[155.0,67.94999999999999],[225.5,67.94999999999999],[225.5,149.95],[155.0,149.95]],"thickness":1.25,"top_z":36,"material":"Volakas Olympic honed, square edge","overhangs":"14 west seating, 1 N/E/S"}],"splash":[{"id":"SP-W","note":"18 in stone z36-54 on west wall behind #1 top: x=0, y 0-44.5","z_from":36,"z_to":54},{"id":"SP-N","note":"north wall x 217.125-296.375, y=0, z36-54 (under #6)","z_from":36,"z_to":54},{"id":"SP-E1","note":"east wall y 25-85.5 behind #7 with notch around window y 44.1-72.6 (sill z38.7 < 54)","z_from":36,"z_to":54},{"id":"SP-E2","note":"east wall y 133.5-195 behind #8 with notch around window y 146.4-174.9","z_from":36,"z_to":54},{"id":"SP-PSW","note":"west-wall return at SW peninsula (y ~194-226), field scribe","z_from":36,"z_to":54},{"id":"SP-PSE","note":"east-wall return at SE peninsula (y ~194-226)","z_from":36,"z_to":54},{"id":"SP-RANGE-GAP","note":"NO stone on east wall y 85.5-133.5 behind range in native and AI geometry although p5 note says 18 in splash above countertop: HOLD"}],"ceiling_height":103.0,"cabinets":[{"id":"#1","type":"base","x":0.0,"y":44.5,"rot_deg":270.0,"width":44.5,"depth":25.0,"height":34.75,"z_bottom":0.0,"appliance":"Sub-Zero DEU1550IP 15 ice maker | 24 wine (owner)","plan":[[0.0,44.5],[-0.0,0.0],[25.0,-0.0],[25.0,44.5]],"fronts":[{"kind":"appliance-panel","u":2,"v":5.5,"w":15.9375,"h":27.75},{"kind":"appliance-panel","u":19.4375,"v":5.5,"w":23.0625,"h":27.75}]},{"id":"#2","type":"upper","x":0.0,"y":44.5,"rot_deg":270.0,"width":44.5,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[0.0,44.5],[-0.0,0.0],[14.0,-0.0],[14.0,44.5]],"fronts":[{"kind":"glass-door","u":2,"v":2.5,"w":19.5,"h":37.25,"hinge":"L"},{"kind":"glass-door","u":23,"v":2.5,"w":19.5,"h":37.25,"hinge":"R"}]},{"id":"#3","type":"tall","x":123.125,"y":0.0,"rot_deg":0.0,"width":40.0,"depth":24.0,"height":97.0,"z_bottom":0.0,"appliance":"","plan":[[123.125,0.0],[163.125,0.0],[163.125,24.0],[123.125,24.0]],"fronts":[{"kind":"door","u":2,"v":5.5,"w":18,"h":28.625,"hinge":"L"},{"kind":"door","u":20,"v":5.5,"w":18,"h":28.625,"hinge":"R"},{"kind":"glass-door","u":2,"v":35.625,"w":18.0,"h":58.375,"hinge":"L"},{"kind":"glass-door","u":20.0,"v":35.625,"w":18.0,"h":58.375,"hinge":"R"}]},{"id":"#4","type":"tall","x":163.125,"y":0.0,"rot_deg":0.0,"width":54.0,"depth":24.0,"height":97.0,"z_bottom":0.0,"appliance":"Sub-Zero CL4850UFD/O 48 in panel-ready (single 48 assumed)","plan":[[163.125,0.0],[217.125,0.0],[217.125,24.0],[163.125,24.0]],"fronts":[{"kind":"appliance-panel","u":2,"v":5.5,"w":50,"h":20.625},{"kind":"appliance-panel","u":2,"v":27.625,"w":24.875,"h":50.625},{"kind":"appliance-panel","u":27.125,"v":27.625,"w":24.875,"h":50.625},{"kind":"appliance-panel","u":2,"v":79.75,"w":50,"h":7.25},{"kind":"appliance-panel","u":2,"v":88.5,"w":50,"h":7.0}]},{"id":"#5","type":"base","x":217.125,"y":0.0,"rot_deg":0.0,"width":55.25,"depth":24.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[217.125,0.0],[272.375,0.0],[272.375,24.0],[217.125,24.0]],"fronts":[{"kind":"drawer","u":2,"v":27.75,"w":30.5,"h":5.5},{"kind":"door","u":2,"v":5.5,"w":15.25,"h":20.625,"hinge":"L"},{"kind":"door","u":17.25,"v":5.5,"w":15.25,"h":20.625,"hinge":"R"},{"kind":"door","u":34,"v":5.5,"w":19.25,"h":27.75,"hinge":"R"}]},{"id":"#5-C17","type":"base","x":272.375,"y":0.0,"rot_deg":0.0,"width":17.0,"depth":24.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[272.375,0.0],[289.375,0.0],[289.375,24.0],[272.375,24.0]],"fronts":[{"kind":"drawer","u":2,"v":4.0,"w":13,"h":10.375},{"kind":"drawer","u":2,"v":15.875,"w":13,"h":10.375},{"kind":"drawer","u":2,"v":27.75,"w":13,"h":5.5}]},{"id":"#5-F7","type":"filler","x":289.375,"y":0.0,"rot_deg":0.0,"width":7.0,"depth":24.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[289.375,0.0],[296.375,0.0],[296.375,24.0],[289.375,24.0]],"fronts":[]},{"id":"#6","type":"upper","x":217.125,"y":0.0,"rot_deg":0.0,"width":65.25,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[217.125,0.0],[282.375,0.0],[282.375,14.0],[217.125,14.0]],"fronts":[{"kind":"glass-door","u":2,"v":2.5,"w":14.5625,"h":37.25,"hinge":"L"},{"kind":"glass-door","u":18.0625,"v":2.5,"w":14.5625,"h":37.25,"hinge":"L"},{"kind":"glass-door","u":32.625,"v":2.5,"w":14.5625,"h":37.25,"hinge":"R"},{"kind":"glass-door","u":48.6875,"v":2.5,"w":14.5625,"h":37.25,"hinge":"R"}]},{"id":"#6-corner","type":"upper","x":282.375,"y":0.0,"rot_deg":0.0,"width":14.0,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[282.375,0.0],[296.375,0.0],[296.375,14.0],[282.375,14.0]],"fronts":[]},{"id":"#7","type":"base","x":296.375,"y":24.0,"rot_deg":90.0,"width":61.5,"depth":24.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[296.375,24.0],[296.375,85.5],[272.375,85.5],[272.375,24.0]],"fronts":[{"kind":"drawer","u":2,"v":4.0,"w":21,"h":10.375},{"kind":"drawer","u":2,"v":15.875,"w":21,"h":10.375},{"kind":"drawer","u":2,"v":27.75,"w":21,"h":5.5},{"kind":"drawer","u":24.5,"v":4.0,"w":21,"h":10.375},{"kind":"drawer","u":24.5,"v":15.875,"w":21,"h":10.375},{"kind":"drawer","u":24.5,"v":27.75,"w":21,"h":5.5},{"kind":"door","u":47,"v":5.5,"w":12.5,"h":27.75,"hinge":"R"}]},{"id":"#8","type":"base","x":296.375,"y":133.5,"rot_deg":90.0,"width":61.5,"depth":24.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[296.375,133.5],[296.375,195.0],[272.375,195.0],[272.375,133.5]],"fronts":[{"kind":"door","u":2,"v":5.5,"w":12.5,"h":27.75,"hinge":"L"},{"kind":"drawer","u":16,"v":4.0,"w":21,"h":10.375},{"kind":"drawer","u":16,"v":15.875,"w":21,"h":10.375},{"kind":"drawer","u":16,"v":27.75,"w":21,"h":5.5},{"kind":"drawer","u":38.5,"v":4.0,"w":21,"h":10.375},{"kind":"drawer","u":38.5,"v":15.875,"w":21,"h":10.375},{"kind":"drawer","u":38.5,"v":27.75,"w":21,"h":5.5}]},{"id":"#9","type":"upper","x":296.375,"y":14.0,"rot_deg":90.0,"width":30.125,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[296.375,14.0],[296.375,44.125],[282.375,44.125],[282.375,14.0]],"fronts":[{"kind":"glass-door","u":2,"v":2.5,"w":13.0625,"h":37.25,"hinge":"L"},{"kind":"glass-door","u":15.0625,"v":2.5,"w":13.0625,"h":37.25,"hinge":"R"}]},{"id":"#10","type":"upper","x":296.375,"y":72.625,"rot_deg":90.0,"width":10.875,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[296.375,72.625],[296.375,83.5],[282.375,83.5],[282.375,72.625]],"fronts":[{"kind":"open","u":2,"v":2.5,"w":6.875,"h":37.25}]},{"id":"#11","type":"upper","x":296.375,"y":135.5,"rot_deg":90.0,"width":10.875,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[296.375,135.5],[296.375,146.375],[282.375,146.375],[282.375,135.5]],"fronts":[{"kind":"open","u":2,"v":2.5,"w":6.875,"h":37.25}]},{"id":"#12","type":"upper","x":296.375,"y":174.875,"rot_deg":90.0,"width":30.125,"depth":14.0,"height":42.25,"z_bottom":54.75,"appliance":"","plan":[[296.375,174.875],[296.375,205.0],[282.375,205.0],[282.375,174.875]],"fronts":[{"kind":"glass-door","u":2,"v":2.5,"w":13.0625,"h":37.25,"hinge":"L"},{"kind":"glass-door","u":15.0625,"v":2.5,"w":13.0625,"h":37.25,"hinge":"R"}]},{"id":"#14","type":"base","x":20.0,"y":220.6,"rot_deg":180.0,"width":20.0,"depth":25.75,"height":34.75,"z_bottom":0.0,"appliance":"Summit ADRD18H34 18 in UC refrigerator, panel-ready","plan":[[20.0,220.6],[0.0,220.6],[-0.0,194.85],[20.0,194.85]],"fronts":[{"kind":"appliance-panel","u":1,"v":4.0,"w":18,"h":15.375},{"kind":"appliance-panel","u":1,"v":19.375,"w":18,"h":15.375}]},{"id":"#13","type":"base","x":57.0,"y":219.85,"rot_deg":180.0,"width":37.0,"depth":25.0,"height":34.75,"z_bottom":0.0,"appliance":"Elkay SCUH1012SH undermount prep sink","plan":[[57.0,219.85],[20.0,219.85],[20.0,194.85],[57.0,194.85]],"fronts":[{"kind":"door","u":2.75,"v":5.5,"w":15.75,"h":27.75,"hinge":"L"},{"kind":"door","u":18.5,"v":5.5,"w":15.75,"h":27.75,"hinge":"R"}]},{"id":"#15","type":"panel","x":57.0,"y":225.4,"rot_deg":180.0,"width":57.0,"depth":4.9,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[57.0,225.4],[0.0,225.4],[-0.0,220.5],[57.0,220.5]],"fronts":[]},{"id":"#16","type":"base","x":272.375,"y":219.85,"rot_deg":180.0,"width":33.0,"depth":25.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[272.375,219.85],[239.375,219.85],[239.375,194.85],[272.375,194.85]],"fronts":[{"kind":"drawer","u":2,"v":27.75,"w":29,"h":5.5},{"kind":"door","u":2,"v":5.5,"w":14.5,"h":20.75,"hinge":"L"},{"kind":"door","u":16.5,"v":5.5,"w":14.5,"h":20.75,"hinge":"R"}]},{"id":"#17","type":"panel","x":296.375,"y":225.4,"rot_deg":180.0,"width":57.0,"depth":4.9,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[296.375,225.4],[239.375,225.4],[239.375,220.5],[296.375,220.5]],"fronts":[]},{"id":"RANGE","type":"appliance","x":296.375,"y":85.5,"rot_deg":90.0,"width":48.0,"depth":28.0,"height":36.0,"z_bottom":0.0,"appliance":"BlueStar 48 in dual-fuel range (47-7/8 chassis) in 48 opening","plan":[[296.375,85.5],[296.375,133.5],[268.375,133.5],[268.375,85.5]],"fronts":[]},{"id":"HOOD","type":"appliance","x":296.375,"y":85.5,"rot_deg":90.0,"width":48.0,"depth":24.0,"height":30.0,"z_bottom":72.0,"appliance":"BlueStar 48 in hood (illustrative) - crown / hood envelope HOLD","plan":[[296.375,85.5],[296.375,133.5],[272.375,133.5],[272.375,85.5]],"fronts":[]},{"id":"ISL","type":"core","x":169.0,"y":68.94999999999999,"rot_deg":0.0,"width":55.5,"depth":80.0,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[169.0,68.95],[224.5,68.95],[224.5,148.95],[169.0,148.95]],"fronts":[{"kind":"door","u":2.0,"v":2.0,"w":25.75,"h":30.75,"hinge":"L"},{"kind":"door","u":27.75,"v":2.0,"w":25.75,"h":30.75,"hinge":"R"}]},{"id":"#20","type":"face","x":223.75,"y":148.95,"rot_deg":270.0,"width":60.0,"depth":0.75,"height":34.75,"z_bottom":0.0,"appliance":"Shaws/Rohl RC3618 36 in farmhouse sink; Perrin & Rowe Southbank U.SB55D1LM","plan":[[223.75,148.95],[223.75,88.95],[224.5,88.95],[224.5,148.95]],"fronts":[{"kind":"door","u":2,"v":5.5,"w":18,"h":20.75,"hinge":"L"},{"kind":"drawer","u":2,"v":27.75,"w":18,"h":5.5},{"kind":"sink-apron","u":21.5,"v":28.0,"w":36,"h":6.75},{"kind":"door","u":21.5,"v":7.0,"w":18,"h":17.5,"hinge":"L"},{"kind":"door","u":39.5,"v":7.0,"w":18,"h":17.5,"hinge":"R"}]},{"id":"#21","type":"face","x":223.75,"y":88.94999999999999,"rot_deg":270.0,"width":20.0,"depth":0.75,"height":34.75,"z_bottom":0.0,"appliance":"Miele G 5482 SCVi SL 18 in DW, panel-ready","plan":[[223.75,88.95],[223.75,68.95],[224.5,68.95],[224.5,88.95]],"fronts":[{"kind":"appliance-panel","u":1,"v":4,"w":18,"h":30.75}]},{"id":"#22","type":"face","x":169.0,"y":148.2,"rot_deg":0.0,"width":55.5,"depth":0.75,"height":34.75,"z_bottom":0.0,"appliance":"Cove DW2451 24 in DW, panel-ready","plan":[[169.0,148.2],[224.5,148.2],[224.5,148.95],[169.0,148.95]],"fronts":[{"kind":"appliance-panel","u":1.75,"v":4,"w":24,"h":30.75},{"kind":"door","u":27.75,"v":5.5,"w":25.5,"h":27.75,"hinge":"R"}]},{"id":"#23","type":"face","x":224.5,"y":69.69999999999999,"rot_deg":180.0,"width":55.5,"depth":0.75,"height":34.75,"z_bottom":0.0,"appliance":"Wolf MD24TE/S 24 in microwave drawer (open niche above)","plan":[[224.5,69.7],[169.0,69.7],[169.0,68.95],[224.5,68.95]],"fronts":[{"kind":"door","u":1.75,"v":5.5,"w":25.375,"h":27.75,"hinge":"L"},{"kind":"open","u":29.125,"v":17.25,"w":24.125,"h":16.0},{"kind":"drawer","u":29.125,"v":5.5,"w":24.125,"h":10.25}]},{"id":"#24","type":"face","x":169.75,"y":68.94999999999999,"rot_deg":90.0,"width":80.0,"depth":0.75,"height":34.75,"z_bottom":0.0,"appliance":"","plan":[[169.75,68.95],[169.75,148.95],[169.0,148.95],[169.0,68.95]],"fronts":[{"kind":"door","u":2,"v":5.5,"w":24,"h":27.75,"hinge":"L"},{"kind":"door","u":28,"v":5.5,"w":24,"h":27.75,"hinge":"L"},{"kind":"door","u":54,"v":5.5,"w":24,"h":27.75,"hinge":"R"}]}],"finishes":{"cabinet":"White Dove painted (ASSUMED, printed on every sheet)","countertop":"Volakas Olympic honed, 1-1/4 in square edge, top 36, 18 in splash (R20 p5 note)"}},{"room":"Second Floor Laundry","status":"new-design","walls":[{"id":"W1","name":"Back wall (appliance)","from":[0,0],"to":[60,0],"openings":[]},{"id":"W2","name":"Entry wall","from":[0,72],"to":[60,72],"openings":[{"type":"door","label":"entry (swing/width unknown)","x_from_wall_start":null,"width":null,"sill_z":0,"head_z":null}]}],"countertops":[],"splash":[],"ceiling_height":96.0,"cabinets":[{"id":"LD-STACK","type":"appliance","x":0.0,"y":0.0,"rot_deg":0.0,"width":27.0,"depth":30.0,"height":78.0,"z_bottom":0.0,"appliance":"ASSUMED 27in stackable; model not selected (permit note 'large stacked W/D')","plan":[[0.0,0.0],[27.0,0.0],[27.0,30.0],[0.0,30.0]],"fronts":[{"kind":"door","u":2.0,"v":2.0,"w":23.0,"h":74.0,"hinge":"L"}]},{"id":"LD-UP","type":"upper","x":0.0,"y":0.0,"rot_deg":0.0,"width":27.0,"depth":15.0,"height":12.0,"z_bottom":84.0,"appliance":"","plan":[[0.0,0.0],[27.0,0.0],[27.0,15.0],[0.0,15.0]],"fronts":[{"kind":"door","u":2.0,"v":2.0,"w":11.5,"h":8.0,"hinge":"L"},{"kind":"door","u":13.5,"v":2.0,"w":11.5,"h":8.0,"hinge":"R"}]},{"id":"LD-SIDE","type":"tall","x":28.5,"y":0.0,"rot_deg":0.0,"width":31.5,"depth":15.0,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[28.5,0.0],[60.0,0.0],[60.0,15.0],[28.5,15.0]],"fronts":[{"kind":"door","u":2.0,"v":6.0,"w":13.75,"h":76.0,"hinge":"L"},{"kind":"door","u":15.75,"v":6.0,"w":13.75,"h":76.0,"hinge":"R"}]}],"finishes":{"cabinet":"TBD (do not carry closet laminates by assumption)","countertop":"none"}},{"room":"Living Room (family-room fireplace built-ins, first-floor addition)","status":"new-design","walls":[{"id":"W1","name":"Fireplace wall","from":[0,0],"to":[180,0],"openings":[{"type":"fireplace","label":"TOWN & COUNTRY 16x60 - RO 65 x 58-1/2","x_from_wall_start":57.5,"width":65,"sill_z":0.0,"head_z":58.5}]}],"countertops":[{"id":"LR-TOP-L","outline":[[0,0],[56,0],[56,21],[0,21]],"thickness":1.25,"top_z":30.0,"material":"white oak"},{"id":"LR-TOP-R","outline":[[124,0],[180,0],[180,21],[124,21]],"thickness":1.25,"top_z":30.0,"material":"white oak"}],"splash":[],"ceiling_height":96.5,"cabinets":[{"id":"LR-L","type":"base","x":0.0,"y":0.0,"rot_deg":0.0,"width":56.0,"depth":20.0,"height":28.75,"z_bottom":0.0,"appliance":"","plan":[[0.0,0.0],[56.0,0.0],[56.0,20.0],[0.0,20.0]],"fronts":[{"kind":"drawer","u":2,"v":22.5,"w":26,"h":5.5},{"kind":"drawer","u":28,"v":22.5,"w":26,"h":5.5},{"kind":"door","u":2,"v":5.5,"w":26,"h":15.5,"hinge":"L"},{"kind":"door","u":28,"v":5.5,"w":26,"h":15.5,"hinge":"R"}]},{"id":"LR-R","type":"base","x":124.0,"y":0.0,"rot_deg":0.0,"width":56.0,"depth":20.0,"height":28.75,"z_bottom":0.0,"appliance":"","plan":[[124.0,0.0],[180.0,0.0],[180.0,20.0],[124.0,20.0]],"fronts":[{"kind":"drawer","u":2,"v":22.5,"w":26,"h":5.5},{"kind":"drawer","u":28,"v":22.5,"w":26,"h":5.5},{"kind":"door","u":2,"v":5.5,"w":26,"h":15.5,"hinge":"L"},{"kind":"door","u":28,"v":5.5,"w":26,"h":15.5,"hinge":"R"}]}],"finishes":{"cabinet":"painted (color TBD)","countertop":"white oak top (species/finish TBD)"}},{"room":"Bedroom 2 Bath","status":"drawn-10-20","walls":[{"id":"W1","name":"Vanity wall","from":[-2.5,0],"to":[35.625,0],"openings":[]}],"countertops":[{"id":"CT1","outline":[[0,0],[33.125,0],[33.125,22],[0,22]],"thickness":1.25,"top_z":36,"material":"Stone TBD","overhangs":"ASSUMED none"}],"splash":[{"height":4,"material":"matching stone"}],"ceiling_height":null,"cabinets":[{"id":"#40","type":"vanity","x":0.0,"y":0.0,"rot_deg":0.0,"width":33.125,"depth":22.0,"height":34.75,"z_bottom":0.0,"appliance":"Kohler Ladena K-2214-0 undermount (scope; not labelled on Oct 20 elevation)","plan":[[0.0,0.0],[33.125,0.0],[33.125,22.0],[0.0,22.0]],"fronts":[{"kind":"false-front","u":2,"v":27.75,"w":29.125,"h":5.5},{"kind":"drawer-u","u":2,"v":15.875,"w":29.125,"h":10.375},{"kind":"drawer-u","u":2,"v":4.0,"w":29.125,"h":10.375}]},{"id":"LB-PL","type":"panel","x":-2.5,"y":0.0,"rot_deg":0.0,"width":2.5,"depth":22.0,"height":102.75,"z_bottom":0.0,"appliance":"","plan":[[-2.5,0.0],[0.0,0.0],[0.0,22.0],[-2.5,22.0]],"fronts":[]},{"id":"LB-PR","type":"panel","x":33.125,"y":0.0,"rot_deg":0.0,"width":2.5,"depth":22.0,"height":102.75,"z_bottom":0.0,"appliance":"","plan":[[33.125,0.0],[35.625,0.0],[35.625,22.0],[33.125,22.0]],"fronts":[]}],"finishes":{"cabinet":"White Dove (ASSUMED)","countertop":"Stone TBD"}},{"room":"Bedroom 2 Closet","status":"drawn-10-20","walls":[{"id":"W1","name":"Closet back wall (cabinet wall)","from":[-5,0],"to":[59.75,0],"openings":[]}],"countertops":[],"splash":[],"ceiling_height":null,"cabinets":[{"id":"#39","type":"tall","x":0.0,"y":0.0,"rot_deg":0.0,"width":54.75,"depth":21.5,"height":78.0,"z_bottom":0.0,"appliance":"","plan":[[0.0,0.0],[54.75,0.0],[54.75,21.5],[0.0,21.5]],"fronts":[{"kind":"door2","u":2,"v":5.5,"w":25.375,"h":69.5,"hinge":"L"},{"kind":"door2","u":27.375,"v":5.5,"w":25.375,"h":69.5,"hinge":"R"},{"kind":"grille","u":2,"v":0.5,"w":50.75,"h":4.5,"label":"RETURN"}]},{"id":"LC-CL","type":"panel","x":-5.0,"y":0.0,"rot_deg":0.0,"width":5.0,"depth":26.5,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[-5.0,0.0],[0.0,0.0],[0.0,26.5],[-5.0,26.5]],"fronts":[]},{"id":"LC-CR","type":"panel","x":54.75,"y":0.0,"rot_deg":0.0,"width":5.0,"depth":26.5,"height":84.0,"z_bottom":0.0,"appliance":"","plan":[[54.75,0.0],[59.75,0.0],[59.75,26.5],[54.75,26.5]],"fronts":[]},{"id":"LC-HD","type":"panel","x":0.0,"y":0.0,"rot_deg":0.0,"width":54.75,"depth":1.0,"height":6.0,"z_bottom":78.0,"appliance":"","plan":[[0.0,0.0],[54.75,0.0],[54.75,1.0],[0.0,1.0]],"fronts":[{"kind":"grille","u":12,"v":1,"w":30.75,"h":4,"label":"SUPPLY"}]}],"finishes":{"cabinet":"White Dove (ASSUMED)","countertop":"none"}},{"room":"Master Bath","status":"drawn-10-20","walls":[{"id":"W1","name":"Vanity wall (only wall drawn)","from":[0,0],"to":[71.75,0],"openings":[]}],"countertops":[{"id":"CT1","outline":[[0,0],[71.75,0],[71.75,22],[0,22]],"thickness":1.25,"top_z":36,"material":"Stone TBD","overhangs":"ASSUMED none beyond 22 depth; not printed"}],"splash":[{"height":4,"material":"matching stone"}],"ceiling_height":null,"cabinets":[{"id":"#38","type":"vanity","x":0.0,"y":0.0,"rot_deg":0.0,"width":71.75,"depth":22.0,"height":34.75,"z_bottom":0.0,"appliance":"2x Kohler Ladena K-2214-0","plan":[[0.0,0.0],[71.75,0.0],[71.75,22.0],[0.0,22.0]],"fronts":[{"kind":"false-front","u":2.0,"v":27.75,"w":26,"h":5.5},{"kind":"door","u":2.0,"v":5.5,"w":13,"h":20.75,"hinge":"L"},{"kind":"door","u":15.0,"v":5.5,"w":13,"h":20.75,"hinge":"R"},{"kind":"false-front","u":43.75,"v":27.75,"w":26,"h":5.5},{"kind":"door","u":43.75,"v":5.5,"w":13,"h":20.75,"hinge":"L"},{"kind":"door","u":56.75,"v":5.5,"w":13,"h":20.75,"hinge":"R"},{"kind":"drawer","u":29.5,"v":4.0,"w":12.75,"h":10.375},{"kind":"drawer","u":29.5,"v":15.875,"w":12.75,"h":10.375},{"kind":"drawer","u":29.5,"v":27.75,"w":12.75,"h":5.5}]},{"id":"MC-L","type":"medcab","x":7.0,"y":0.0,"rot_deg":0.0,"width":16.0,"depth":4.0,"height":30.0,"z_bottom":50.0,"appliance":"Robern 16x30 med cab","plan":[[7.0,0.0],[23.0,0.0],[23.0,4.0],[7.0,4.0]],"fronts":[{"kind":"door","u":0.75,"v":0.75,"w":14.5,"h":28.5,"hinge":"L"}]},{"id":"MC-R","type":"medcab","x":48.75,"y":0.0,"rot_deg":0.0,"width":16.0,"depth":4.0,"height":30.0,"z_bottom":50.0,"appliance":"Robern 16x30 med cab","plan":[[48.75,0.0],[64.75,0.0],[64.75,4.0],[48.75,4.0]],"fronts":[{"kind":"door","u":0.75,"v":0.75,"w":14.5,"h":28.5,"hinge":"R"}]}],"finishes":{"cabinet":"White Dove (ASSUMED) per footer","countertop":"Stone TBD"}}]};
+const STILE = 2, TOE = 4;
+const errors = [];
+window.addEventListener('error', e => errors.push(String(e.message)));
+
+// ---------- renderer ----------
+const wrap = document.getElementById('wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+wrap.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdde2e6);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.55;
+const camera = new THREE.PerspectiveCamera(50, 1, 1, 6000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxDistance = 1400;
+let photo = true;
+
+// ---------- procedural textures ----------
+let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+function canvasTex(w, h, draw, rx = 1, ry = 1) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(rx, ry); t.anisotropy = 8; return t;
+}
+const floorTex = canvasTex(1024, 1024, (g, w, h) => {      // wide-plank white oak, natural (illustrative)
+  const pw = h / (160 / 9);
+  for (let r = 0; r * pw < h; r++) {
+    let x = -rnd() * 500;
+    while (x < w) {
+      const len = 400 + rnd() * 600, v = 0.9 + rnd() * 0.2, y0 = r * pw;
+      g.fillStyle = `rgb(${206 * v | 0},${160 * v | 0},${108 * v | 0})`; g.fillRect(x, y0, len, pw);
+      for (let k = 0; k < 14; k++) { g.globalAlpha = .06 + rnd() * .1; g.fillStyle = rnd() > .45 ? '#8a5a2c' : '#f0cf9c'; g.fillRect(x, y0 + rnd() * pw, len, .6 + rnd() * 1.6); }
+      g.globalAlpha = 1; g.fillStyle = 'rgba(60,38,18,.5)'; g.fillRect(x, y0, 1.6, pw); x += len;
+    }
+    g.fillStyle = 'rgba(60,38,18,.45)'; g.fillRect(0, r * pw, w, 1.2);
+  }
+}, 1 / 160, 1 / 160);
+function stoneTex(base, vein, nVeins, alpha) {
+  return canvasTex(1024, 512, (g, w, h) => {
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    for (let k = 0; k < nVeins; k++) {
+      g.strokeStyle = vein.replace('A', (alpha * (0.4 + rnd() * 0.8)).toFixed(2)); g.lineWidth = 0.6 + rnd() * 2.4; g.beginPath();
+      let x = rnd() * w, y = rnd() * h; g.moveTo(x, y);
+      for (let s = 0; s < 12; s++) { x += 40 + rnd() * 80; y += (rnd() - .5) * 100; g.lineTo(x, y); }
+      g.stroke();
+    }
+  }, 1 / 60, 1 / 60);
+}
+const volakasTex = stoneTex('#f1efea', 'rgba(140,140,145,A)', 16, 0.3);
+const quartziteTex = stoneTex('#d9d1c4', 'rgba(110,98,86,A)', 34, 0.36);
+const oakTopTex = canvasTex(512, 128, (g, w, h) => {
+  g.fillStyle = '#c9a77c'; g.fillRect(0, 0, w, h);
+  for (let k = 0; k < 60; k++) { g.fillStyle = rnd() > .5 ? 'rgba(110,70,35,.16)' : 'rgba(240,215,170,.2)'; g.fillRect(0, rnd() * h, w, .6 + rnd() * 2); }
+}, 1 / 60, 1 / 40);
+
+// ---------- materials (shared; options mutate them) ----------
+const M = (color, roughness = .6, metalness = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+const mat = {
+  paint: M(0xf0eee6, .42), island: M(0xf0eee6, .42), reveal: M(0x4a4640, .9), interior: M(0xd9d3c6, .75),
+  wall: M(0xe6e2d8, .92, 0, { side: THREE.DoubleSide }), ceil: M(0xfbfaf6, .95, 0, { side: THREE.DoubleSide }), splash: null,
+  floor: M(0xffffff, .5, 0, { map: floorTex }), stone: M(0xffffff, .26, 0, { map: volakasTex }),
+  oak: M(0xffffff, .5, 0, { map: oakTopTex }), steel: M(0xc4c8ca, .32, .85), black: M(0x15181a, .2, .3),
+  white: M(0xf7f7f3, .2), hw: M(0xb5934a, .3, .85), toe: M(0x2b2a28, .9), rod: M(0xb8bcbf, .3, .9),
+  glassDoor: M(0xd8e6ea, .05, 0, { transparent: true, opacity: .3, depthWrite: false }),
+  glassWin: M(0xbcd9ea, .05, 0, { transparent: true, opacity: .35, depthWrite: false }),
+  casing: M(0xfaf9f5, .6), led: M(0xfff1d0, 1, 0, { emissive: 0xffe2a8, emissiveIntensity: 2.4 }),
+  cush: M(0x8a8f86, .95),
+};
+mat.splash = mat.stone;
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x8b867b, transparent: true, opacity: .5 });
+const dimMat = new THREE.LineBasicMaterial({ color: 0xc0392b });
+const COLORS = {
+  'White Dove': { hex: 0xf0eee6, rough: .42 }, 'Hale Navy': { hex: 0x3d4857, rough: .42 }, 'Warm greige': { hex: 0xcabfae, rough: .42 },
+  'Tafisa M2031 Creme De La Creme': { hex: 0xe9e0cb, rough: .7 }, 'Tafisa HG834 Iron Horse high gloss': { hex: 0x56585c, rough: .1 },
+};
+const HARDWARE = { 'Brass': [0xb5934a, .3, .85], 'Polished nickel': [0xd2d4d4, .1, 1] };
+const TOPS = { 'Volakas honed': [volakasTex, .3], 'Alternate quartzite look': [quartziteTex, .22] };
+
+// ---------- helpers ----------
+const frac = v => {
+  const s16 = Math.round(v * 16), whole = Math.floor(s16 / 16); let n = s16 % 16, d = 16;
+  while (n && n % 2 === 0) { n /= 2; d /= 2; }
+  return n ? (whole ? `${whole} ${n}/${d}` : `${n}/${d}`) : `${whole}`;
+};
+const root = new THREE.Group(); scene.add(root);
+let R = null;                       // current room state
+const picks = [];                   // pickable meshes
+function label(text, X, Y, Z, size = .03, color = '#14212b', bg = 'rgba(255,255,255,.9)', onTop = true) {
+  const c = document.createElement('canvas'), g = c.getContext('2d'), fs = 52, font = `600 ${fs}px system-ui, Segoe UI, sans-serif`;
+  g.font = font; c.width = Math.ceil(g.measureText(text).width) + 32; c.height = fs + 24;
+  g.font = font; g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, c.width, c.height, 16); g.fill();
+  g.fillStyle = color; g.textBaseline = 'middle'; g.fillText(text, 16, c.height / 2 + 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: !onTop, transparent: true, sizeAttenuation: false }));
+  s.scale.set(size * c.width / c.height, size, 1); s.position.set(X, Z, Y); s.renderOrder = 10; return s;
+}
+function dimLine(parent, a, b, text, size = .026, tick = [0, 1.5, 0]) {       // a, b = plan [X, Y, Z]
+  const P = p => new THREE.Vector3(p[0], p[2], p[1]), A = P(a), B = P(b), T = new THREE.Vector3(tick[0], tick[2], tick[1]);
+  const l = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints([A, B, A.clone().sub(T), A.clone().add(T), B.clone().sub(T), B.clone().add(T)]), dimMat);
+  l.renderOrder = 9; parent.add(l);
+  const m = A.clone().add(B).multiplyScalar(.5);
+  parent.add(label(text ?? frac(A.distanceTo(B)), m.x, m.z, m.y + .3, size, '#9e2a1f', 'rgba(255,255,255,.92)', false));
+}
+function disposeTree(o) {
+  o.traverse(n => {
+    if (n.geometry) n.geometry.dispose();
+    if (n.material && n.material.map && n.material.map.image instanceof HTMLCanvasElement && n.isSprite) { n.material.map.dispose(); n.material.dispose(); }
+  });
+}
+const shortName = s => String(s).replace(/\s*\(.*$/, '').replace(/,.*$/, '').trim();
+const roomLabel = n => shortName(n).replace(/\s+-\s+.*$/, '').replace(/^Living Room.*/, 'Living Room');
+
+// ---------- cabinet builder (local frame: x = u along width, y = up from z_bottom, z = v depth toward the face) ----------
+const knobGeo = new THREE.SphereGeometry(.62, 14, 9);
+function lbox(g, u0, y0, v0, w, h, d, m, o = {}) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  mesh.position.set(u0 + w / 2, y0 + h / 2, v0 + d / 2);
+  mesh.castShadow = o.cast !== false; mesh.receiveShadow = true;
+  if (o.edges) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 25), edgeMat); mesh.add(e); R.edges.push(e); }
+  mesh.userData.cab = g.userData.cab; g.add(mesh); if (o.pick !== false) R.picks.push(mesh);
+  return mesh;
+}
+function facePlate(g, W, y0, H, depth, holes, m, thick) {
+  const sh = new THREE.Shape(); sh.moveTo(0, y0); sh.lineTo(W, y0); sh.lineTo(W, H); sh.lineTo(0, H); sh.closePath();
+  const used = [];
+  for (const h of holes) {
+    const x0 = Math.max(.05, h.u - .0625), x1 = Math.min(W - .05, h.u + h.w + .0625), a0 = Math.max(y0 + .05, h.v - .0625), a1 = Math.min(H - .05, h.v + h.h + .0625);
+    if (x1 - x0 < .3 || a1 - a0 < .3) continue;
+    if (used.some(r => x0 < r[1] - .01 && x1 > r[0] + .01 && a0 < r[3] - .01 && a1 > r[2] + .01)) continue;
+    used.push([x0, x1, a0, a1]);
+    const p = new THREE.Path(); p.moveTo(x0, a0); p.lineTo(x0, a1); p.lineTo(x1, a1); p.lineTo(x1, a0); p.closePath(); sh.holes.push(p);
+  }
+  const geo = new THREE.ExtrudeGeometry(sh, { depth: thick, bevelEnabled: false });
+  const mesh = new THREE.Mesh(geo, m); mesh.position.z = depth - thick; mesh.castShadow = mesh.receiveShadow = true;
+  mesh.userData.cab = g.userData.cab; g.add(mesh); R.picks.push(mesh);
+}
+function door(c, g, fr, f, ctx) {                    // inset shaker front in local frame
+  const gap = .125, u0 = f.u + gap, w = f.w - 2 * gap, y0 = f.v + gap, h = f.h - 2 * gap, D = c.depth;
+  const th = ctx.thin ? .4 : .75, vb = D - th - .0, vf = D - .03;
+  const kind = f.kind, m = ctx.paint;
+  const mk = (a, b, c2, d, e, ff, mm) => lbox(fr, a, b, c2, d, e, ff, mm, { edges: true });
+  if (kind === 'sink-apron') { mk(u0, y0, vb, w, h, vf - vb, mat.white); return; }
+  if (kind === 'false-front' || kind === 'appliance-panel' || (kind === 'drawer' && h <= 7.5)) { mk(u0, y0, vb, w, h, vf - vb, m); }
+  else {
+    const r = Math.min(2.25, w / 4, h / 4);
+    mk(u0, y0, vb, r, h, vf - vb, m); mk(u0 + w - r, y0, vb, r, h, vf - vb, m);
+    mk(u0 + r, y0, vb, w - 2 * r, r, vf - vb, m); mk(u0 + r, y0 + h - r, vb, w - 2 * r, r, vf - vb, m);
+    if (kind === 'glass-door') lbox(fr, u0 + r, y0 + r, D - .45, w - 2 * r, h - 2 * r, .08, mat.glassDoor, { cast: false });
+    else mk(u0 + r, y0 + r, D - th * .62, w - 2 * r, h - 2 * r, th * .3, m);
+  }
+  if (kind === 'appliance-panel' || kind === 'sink-apron') { if (kind === 'appliance-panel') knobTo(c, fr, f, u0, y0, w, h, D, ctx); return; }
+  knobTo(c, fr, f, u0, y0, w, h, D, ctx);
+}
+function knobTo(c, fr, f, u0, y0, w, h, D) {
+  const k = new THREE.Mesh(knobGeo, mat.hw); k.scale.set(1, 1, .8); k.castShadow = true;
+  let ku, kv;
+  if (f.kind === 'drawer' || f.kind === 'false-front') { ku = u0 + w / 2; kv = y0 + h / 2; if (f.kind === 'false-front') return; }
+  else if (f.kind === 'appliance-panel') { return; }
+  else {
+    ku = f.hinge === 'R' ? u0 + 1.5 : u0 + w - 1.5;
+    const absBottom = c.z_bottom + f.v;
+    kv = h > 50 ? Math.min(y0 + h - 3, 40 - c.z_bottom) : (absBottom > 40 || c.type === 'upper' ? y0 + 3 : y0 + h - 3);
+  }
+  k.position.set(ku, kv, D + .35); k.userData.cab = fr.userData.cab; fr.add(k);
+}
+function parseRods(notes) {
+  const m = /rods?\s+(?:at\s+)?([0-9][0-9 ,\/and]*?)\s*AFF/i.exec(notes || ''); if (!m) return [];
+  return m[1].split(/\s*(?:and|\/|,)\s*/).map(Number).filter(n => n > 10 && n < 100);
+}
+function buildCab(c, ctx) {
+  const g = new THREE.Group(); g.userData.cab = c.id;
+  const a = c.rot_deg * Math.PI / 180, eu = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), ev = new THREE.Vector3(-Math.sin(a), 0, Math.cos(a));
+  g.matrixAutoUpdate = false; g.matrix.makeBasis(eu, new THREE.Vector3(0, 1, 0), ev); g.matrix.setPosition(c.x, c.z_bottom, c.y);
+  const fr = new THREE.Group(); fr.userData.cab = c.id; g.add(fr);               // fronts (doors on/off)
+  const inside = new THREE.Group(); inside.userData.cab = c.id; g.add(inside);
+  const W = c.width, D = c.depth, H = c.height, isIsl = ctx.isIsland(c);
+  const paint = isIsl ? mat.island : mat.paint, carc = ctx.laminate ? paint : mat.interior;
+  const rec = { id: c.id, c, g, fr, isIsland: isIsl, kind: c.type };
+  const kinds = c.fronts.map(f => f.kind);
+  const cx = { paint, thin: D < 2 };
+  const asAppliance = c.type === 'appliance' && !kinds.includes('appliance-panel');
+
+  if (asAppliance) { buildAppliance(c, g, rec); R.cabs.push(rec); R.group.add(g); return rec; }
+  if (c.type === 'filler' || c.type === 'panel') { lbox(g, 0, 0, 0, W, H, D, paint); R.cabs.push(rec); R.group.add(g); return rec; }
+  if (c.type === 'core') {                                         // island body, faced on all four sides by 3/4 face plates
+    lbox(g, .75, 0, .75, W - 1.5, H, D - 1.5, paint); R.cabs.push(rec); R.group.add(g); return rec;
+  }
+  if (c.type === 'face') {
+    lbox(g, 0, 0, 0, W, H, .04, mat.reveal, { pick: false });
+    facePlate(g, W, 0, H, D, c.fronts, paint, D);
+    c.fronts.forEach(f => door(c, g, fr, f, cx));
+    R.cabs.push(rec); R.group.add(g); return rec;
+  }
+  // cabinet box
+  const hasToe = ['base', 'tall', 'vanity'].includes(c.type) && !c.fronts.some(f => f.v < TOE + .3);
+  const y0 = hasToe ? TOE : 0, t = .75, body = D - t;
+  if (hasToe) lbox(g, 0, 0, 3, W, TOE, .75, mat.toe, { cast: false });
+  lbox(g, 0, y0, 0, t, H - y0, body, carc); lbox(g, W - t, y0, 0, t, H - y0, body, carc);        // sides
+  lbox(g, t, y0, 0, W - 2 * t, t, body, carc); lbox(g, t, H - t, 0, W - 2 * t, t, body, carc);    // bottom, top
+  lbox(g, t, y0 + t, 0, W - 2 * t, H - y0 - 2 * t, .5, carc);                                      // back
+  const rods = parseRods(c.notes), onlyAppl = kinds.length && kinds.every(k => k === 'appliance-panel');
+  const wantShelves = !onlyAppl && (kinds.some(k => ['open', 'glass-door', 'door'].includes(k))) && c.type !== 'base' && c.type !== 'vanity';
+  if (wantShelves) {
+    const inner = H - y0 - 2 * t, spacing = rods.length ? 0 : 14, n = rods.length ? 1 : Math.max(0, Math.round(inner / spacing) - 1);
+    for (let i = 1; i <= n; i++) {
+      const sy = rods.length ? H - t - 11 : y0 + t + inner * i / (n + 1);
+      lbox(g, t, sy, 0, W - 2 * t, .75, body - 1, carc, { pick: false });
+    }
+  } else if (c.type === 'base' && kinds.includes('door')) lbox(g, t, y0 + t + 14, 0, W - 2 * t, .75, body - 1, carc, { pick: false });
+  for (const rz of rods) {                                       // hanging rods
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(.6, .6, W - 2 * t, 10), mat.rod);
+    rod.rotation.z = Math.PI / 2; rod.position.set(W / 2, rz - c.z_bottom, D / 2); rod.userData.cab = c.id; g.add(rod); R.picks.push(rod);
+  }
+  for (const f of c.fronts) if (f.kind === 'drawer') {             // drawer boxes (visible with doors off)
+    const hh = Math.max(1, f.h - 1.5);
+    lbox(inside, f.u + .75, f.v + .5, 1, f.w - 1.5, hh, D - 4, carc, { pick: false });
+  }
+  facePlate(g, W, hasToe ? TOE : 0, H, D, c.fronts, paint, t);
+  c.fronts.forEach(f => door(c, g, fr, f, cx));
+  if (c.type === 'upper' && c.z_bottom > 40) {                     // concealed 24V LED under uppers (illustrative)
+    const led = lbox(g, 2, -.35, D - 5, W - 4, .3, 1.1, mat.led, { cast: false, pick: false });
+    R.ledStrips.push(led);
+  }
+  R.cabs.push(rec); R.group.add(g); return rec;
+}
+function buildAppliance(c, g, rec) {
+  const W = c.width, D = c.depth, H = Math.max(c.height, 0), name = (c.appliance || '').toLowerCase(), id = c.id.toLowerCase();
+  const pk = m => { m.userData.cab = c.id; return m; };
+  if (/fridge|refrig/.test(id) || H <= 0) {                        // height not in model: fall back to 72 in, inset behind the host panel
+    const hh = H > 0 ? H : 72; rec.assumedHeight = H <= 0;
+    lbox(g, 0, 0, 0, W, hh, D - 1.2, mat.steel);
+    lbox(g, W / 2 - .3, 4, D - 1.6, .6, hh - 8, .4, mat.black, { cast: false });
+    return;
+  }
+  if (/hood/.test(id + name)) {
+    lbox(g, 0, 0, 0, W, 8, D, mat.steel); lbox(g, W * .25, 8, D * .15, W * .5, H - 8, D * .5, mat.steel);
+    return;
+  }
+  if (/range|cooktop/.test(id + name)) {
+    lbox(g, 0, 0, 0, W, H - 1.5, D - 1.5, mat.steel);
+    lbox(g, 0, H - 1.5, 0, W, 1.5, D - 1.5, mat.black);
+    for (let i = 0; i < 6; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, .3, 16), mat.steel); b.position.set(W * (.16 + (i % 3) * .34), H - .1, D * (i < 3 ? .3 : .68)); pk(b); g.add(b); R.picks.push(b); }
+    lbox(g, 3, 3, D - 1.5, W - 6, H - 14, .4, mat.black, { cast: false });
+    for (let i = 0; i < 6; i++) { const k = new THREE.Mesh(knobGeo, mat.steel); k.position.set(W * (.1 + i * .16), H - 5, D - .3); pk(k); g.add(k); }
+    return;
+  }
+  // stacked washer / dryer or other freestanding appliance
+  lbox(g, 0, 0, 0, W, H, D - .5, mat.white);
+  const stack = /w\/d|washer|dryer|stack/.test(id + name) || c.id === 'LD-STACK';
+  if (stack) for (const cy of [H * .27, H * .75]) {
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(W * .34, 8.5), Math.min(W * .34, 8.5), .6, 28), mat.black);
+    d.rotation.x = Math.PI / 2; d.position.set(W / 2, cy, D - .4); pk(d); g.add(d); R.picks.push(d);
+  }
+}
+
+// ---------- room build ----------
+function planDir(w) { const dx = w.to[0] - w.from[0], dy = w.to[1] - w.from[1], L = Math.hypot(dx, dy); return { dx: dx / L, dy: dy / L, L }; }
+function loopOrder(walls) {
+  const key = p => p[0].toFixed(2) + ',' + p[1].toFixed(2), adj = new Map();
+  walls.forEach((w, i) => [w.from, w.to].forEach(p => { const k = key(p); if (!adj.has(k)) adj.set(k, []); adj.get(k).push(i); }));
+  if ([...adj.values()].some(v => v.length !== 2)) return null;
+  const used = new Set(), pts = []; let cur = 0, p = walls[0].from;
+  for (let n = 0; n < walls.length; n++) {
+    used.add(cur); const w = walls[cur], fwd = key(w.from) === key(p), a = fwd ? w.from : w.to, b = fwd ? w.to : w.from;
+    pts.push([a[0], a[1]]); p = b;
+    const nxt = adj.get(key(p)).find(i => !used.has(i)); if (nxt === undefined) break; cur = nxt;
+  }
+  return pts.length === walls.length ? pts : null;
+}
+const pip = (poly, x, y) => { let ins = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const [xi, yi] = poly[i], [xj, yj] = poly[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; } return ins; };
+
+function buildRoom(rm) {
+  if (R) { root.remove(R.group); disposeTree(R.group); }
+  const group = new THREE.Group(); root.add(group);
+  R = { rm, group, picks: [], edges: [], cabs: [], walls: [], ledStrips: [], lights: [], dims: new THREE.Group(), tags: new THREE.Group(), apps: new THREE.Group(), ceil: new THREE.Group(),
+        lighting: new THREE.Group(), splashG: new THREE.Group(), doorsOn: true };
+  const H = rm.ceiling_height || 96; R.H = H;
+  const T = 4.5, walls = rm.walls.map(w => ({ ...w, ...planDir(w) }));
+  const loop = loopOrder(rm.walls);
+  // bounds
+  let xs = [], ys = [];
+  rm.walls.forEach(w => { xs.push(w.from[0], w.to[0]); ys.push(w.from[1], w.to[1]); });
+  rm.cabinets.forEach(c => c.plan.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  (rm.countertops || []).forEach(t => t.outline.forEach(p => { xs.push(p[0]); ys.push(p[1]); }));
+  let b = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  let poly = loop;
+  if (!loop) {                                                    // open room: pad the open sides; single wall gets 72 in of floor
+    if (walls.length === 1) {
+      const w = walls[0], cyc = rm.cabinets.length ? rm.cabinets.reduce((s, c) => s + c.plan.reduce((q, p) => q + p[1], 0) / 4, 0) / rm.cabinets.length : b.y1;
+      b.x0 -= 6; b.x1 += 6; if (Math.abs(w.dy) < .5) { if (cyc >= w.from[1]) b.y1 = w.from[1] + 72; else b.y0 = w.from[1] - 72; }
+    }
+    poly = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]];
+  }
+  R.bounds = b; const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  R.center = [cx, cy];
+  const inside = (x, y) => pip(poly, x, y);
+  // orientation (outward normal) per wall
+  for (const w of walls) {
+    const mx = (w.from[0] + w.to[0]) / 2, my = (w.from[1] + w.to[1]) / 2, nx = -w.dy, ny = w.dx;
+    let out;
+    if (loop) out = inside(mx + nx * 1.5, my + ny * 1.5) ? [-nx, -ny] : [nx, ny];
+    else out = ((mx - cx) * nx + (my - cy) * ny) > 0 ? [nx, ny] : [-nx, -ny];
+    w.out = out; w.mid = [mx, my];
+    w.skip = /\(open[;) ]|open edge|no wall printed/i.test(w.name || '');
+  }
+  // extend wall ends at convex corners of closed loops (so outer corners close)
+  const sgnArea = loop ? loop.reduce((s, p, i) => { const q = loop[(i + 1) % loop.length]; return s + (p[0] * q[1] - q[0] * p[1]); }, 0) : 0;
+  const keyp = p => p[0].toFixed(2) + ',' + p[1].toFixed(2);
+  for (const w of walls) {
+    w.ext = [0, 0];
+    if (!loop) { w.ext = [0, 0]; continue; }
+    [[w.from, 0], [w.to, 1]].forEach(([pt, end]) => {
+      const o = walls.find(v => v !== w && (keyp(v.from) === keyp(pt) || keyp(v.to) === keyp(pt)));
+      if (!o) return;
+      const od = keyp(o.from) === keyp(pt) ? [o.dx, o.dy] : [-o.dx, -o.dy];            // other wall leaving pt
+      const d = end === 1 ? [w.dx, w.dy] : [-w.dx, -w.dy];                              // this wall arriving at pt
+      // convex when turning the same way as the loop winds; walls may be reversed vs loop, so test with the interior probe
+      const probe = [pt[0] - d[0] * 2 + od[0] * 2, pt[1] - d[1] * 2 + od[1] * 2];
+      if (inside(probe[0], probe[1])) w.ext[end] = T;
+    });
+  }
+  // single wall rooms: lengthen to cover the cabinets
+  if (!loop && walls.length === 1) { const w = walls[0]; const lo = Math.min(...xs) - 3, hi = Math.max(...xs) + 3; if (Math.abs(w.dy) < .5) { const s0 = lo - w.from[0], s1 = hi - w.from[0]; w.ext = [Math.max(0, -s0), Math.max(0, s1 - w.L)]; } }
+
+  // floor
+  const shape = new THREE.Shape(poly.map(p => new THREE.Vector2(p[0], -p[1])));
+  const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat.floor); floor.rotation.x = -Math.PI / 2; floor.position.y = -.02; floor.receiveShadow = true; group.add(floor);
+
+  // walls with openings
+  const wallMat = mat.wall;
+  for (const w of walls) {
+    const g = new THREE.Group(); group.add(g); w.g = g;
+    if (w.skip) { g.visible = false; w.hidden = true; continue; }
+    const ops = (w.openings || []).map(o => {
+      const win = /window/i.test((o.label || '') + o.type) || o.type === 'window';
+      const width = o.width ?? 30;
+      let s = o.x_from_wall_start ?? Math.max(0, (w.L - width) / 2);
+      const sill = o.sill_z ?? (win ? 40 : 0), head = o.head_z ?? 80;
+      return { s, e: Math.min(w.L, s + width), sill, head, type: o.type, win, label: o.label || o.type, assumed: o.sill_z == null || o.head_z == null || o.x_from_wall_start == null || o.width == null };
+    }).sort((p, q) => p.s - q.s);
+    const piece = (s0, s1, z0, z1, m = wallMat) => {
+      if (s1 - s0 < .05 || z1 - z0 < .05) return null;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(s1 - s0, z1 - z0, T), m);
+      const sm = (s0 + s1) / 2, px = w.from[0] + w.dx * sm + w.out[0] * T / 2, py = w.from[1] + w.dy * sm + w.out[1] * T / 2;
+      mesh.position.set(px, (z0 + z1) / 2, py); mesh.rotation.y = Math.atan2(-w.dy, w.dx); mesh.castShadow = mesh.receiveShadow = true;
+      mesh.userData.info = `${shortName(w.name)} (existing wall)`; g.add(mesh); R.picks.push(mesh); return mesh;
+    };
+    let cur = -w.ext[0];
+    for (const o of ops) {
+      piece(cur, o.s, 0, H); piece(o.s, o.e, 0, o.sill); piece(o.s, o.e, o.head, H);
+      cur = o.e;
+      const info = `${o.win ? 'Window' : (o.type === 'slider' ? 'Slider door' : 'Opening')} - ${frac(o.e - o.s)} wide, sill ${frac(o.sill)}, head ${frac(o.head)}.${o.assumed ? ' Position or height not in the model; drawn at a placeholder.' : ''}`;
+      if (o.win || o.type === 'slider') {
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(o.e - o.s, o.head - o.sill, .3), mat.glassWin);
+        const sm = (o.s + o.e) / 2; pane.position.set(w.from[0] + w.dx * sm + w.out[0] * T / 2, (o.sill + o.head) / 2, w.from[1] + w.dy * sm + w.out[1] * T / 2);
+        pane.rotation.y = Math.atan2(-w.dy, w.dx); pane.userData.info = info; g.add(pane); R.picks.push(pane);
+      }
+      const cas = (s0, s1, z0, z1) => { const m = piece(s0, s1, z0, z1, mat.casing); if (m) { m.position.x -= w.out[0] * (T / 2 - .4); m.position.z -= w.out[1] * (T / 2 - .4); m.scale.z = .2; m.userData.info = info; } };
+      cas(o.s - 1.5, o.s, o.sill, o.head); cas(o.e, o.e + 1.5, o.sill, o.head); cas(o.s - 1.5, o.e + 1.5, o.head, o.head + 1.5);
+      if (o.sill > 0) cas(o.s - 1.5, o.e + 1.5, o.sill - 1.5, o.sill);
+    }
+    piece(cur, w.L + w.ext[1], 0, H);
+  }
+  R.walls = walls;
+
+  // cabinets
+  const ctx = { isIsland: c => rm.room === 'Kitchen' && (c.id === 'ISL' || c.type === 'face'), laminate: /M2031|HG834/.test(rm.finishes?.cabinet || '') };
+  R.ctx = ctx;
+  for (const c of rm.cabinets) buildCab(c, ctx);
+
+  // countertops
+  const topMat = /white oak/i.test(rm.finishes?.countertop || '') ? mat.oak : mat.stone;
+  for (const t of rm.countertops || []) {
+    const sh = new THREE.Shape(t.outline.map(p => new THREE.Vector2(p[0], -p[1])));
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: t.thickness || 1.25, bevelEnabled: false });
+    const m = new THREE.Mesh(geo, topMat); m.rotation.x = -Math.PI / 2; m.position.y = t.top_z - (t.thickness || 1.25); m.castShadow = m.receiveShadow = true;
+    m.userData.info = `Countertop ${t.id}: ${t.material || ''}\n${t.overhangs || ''}`; group.add(m); R.picks.push(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat); e.rotation.x = -Math.PI / 2; e.position.y = m.position.y; group.add(e); R.edges.push(e);
+  }
+  R.topMat = topMat;
+
+  // splash on wall runs
+  const spl = rm.splash || [];
+  const sh = spl.length ? (spl[0].height ?? (spl[0].z_to != null ? spl[0].z_to - spl[0].z_from : 0)) : 0;
+  if (sh > 0) for (const t of rm.countertops || []) {
+    const pts = t.outline;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length];
+      for (const w of walls) {
+        if (w.skip) continue;
+        const rel = pt => (pt[0] - w.from[0]) * w.dx + (pt[1] - w.from[1]) * w.dy, off = pt => (pt[0] - w.from[0]) * -w.dy + (pt[1] - w.from[1]) * w.dx;
+        if (Math.abs(off(p)) > 1.6 || Math.abs(off(q)) > 1.6) continue;
+        let s0 = Math.max(0, Math.min(rel(p), rel(q))), s1 = Math.min(w.L, Math.max(rel(p), rel(q)));
+        if (s1 - s0 < 1) continue;
+        const ops = (w.openings || []).map(o => ({ s: o.x_from_wall_start ?? 0, e: (o.x_from_wall_start ?? 0) + (o.width ?? 0), sill: o.sill_z ?? 0 })).filter(o => o.e > s0 && o.s < s1).sort((a, c2) => a.s - c2.s);
+        const seg = (a0, a1, hh) => {
+          if (a1 - a0 < .2 || hh < .2) return;
+          const mesh = new THREE.Mesh(new THREE.BoxGeometry(a1 - a0, hh, .75), mat.stone);
+          const sm = (a0 + a1) / 2, ix = -w.out[0] * .375, iy = -w.out[1] * .375;
+          mesh.position.set(w.from[0] + w.dx * sm + ix, t.top_z + hh / 2, w.from[1] + w.dy * sm + iy); mesh.rotation.y = Math.atan2(-w.dy, w.dx);
+          mesh.castShadow = mesh.receiveShadow = true; mesh.userData.info = `Stone splash, ${frac(sh)} high, on the wall behind the countertop.`; R.splashG.add(mesh); R.picks.push(mesh);
+        };
+        let cur = s0;
+        for (const o of ops) { seg(cur, Math.max(cur, o.s), sh); const hs = Math.min(sh, Math.max(0, o.sill - t.top_z)); seg(Math.max(s0, o.s), Math.min(s1, o.e), hs); cur = Math.min(s1, Math.max(cur, o.e)); }
+        seg(cur, s1, sh);
+      }
+    }
+  }
+  group.add(R.splashG);
+
+  // ceiling (+ illustrative coffers and LED for the kitchen)
+  buildCeiling(rm, poly, H);
+  group.add(R.ceil, R.lighting, R.dims, R.tags, R.apps);
+
+  // tags
+  const applName = c => {
+    const t = (c.id + ' ' + (c.appliance || '')).toLowerCase();
+    if (/ice maker/.test(t)) return 'Ice maker'; if (/hood/.test(t)) return 'Hood'; if (/range/.test(t)) return 'Range';
+    if (/microwave|md24/.test(t)) return 'Microwave drawer'; if (/dishwasher|dw|miele|cove dw/.test(t)) return 'Dishwasher';
+    if (/refrig|fridge|cl4850|adrd|ff195/.test(t)) return c.id === 'CB-1' || /undercounter|uc /.test(t) ? 'Undercounter fridge' : 'Refrigerator';
+    if (/rc3618|farmhouse/.test(t)) return 'Farm sink'; if (/prep sink|sink/.test(t)) return 'Prep sink'; if (/stack|w\/d|washer/.test(t)) return 'Washer / dryer';
+    return '';
+  };
+  for (const rec of R.cabs) {
+    const c = rec.c, pos = new THREE.Vector3(c.width / 2, Math.min(c.height - 2, 40), c.depth + 1.5).applyMatrix4(rec.g.matrix);
+    if (c.type === 'filler' || c.type === 'panel' || c.type === 'core') continue;
+    if (!(c.type === 'appliance' && !/^\W*\d/.test(c.id) && /^[A-Z-]+$/.test(c.id))) R.tags.add(label(c.id, pos.x, pos.z, pos.y, .02, '#ffffff', 'rgba(31,74,110,.9)', false));
+    const an = applName(c);
+    if (an) { const ap = label(an, pos.x, pos.z, pos.y + 4.5, .02, '#ffffff', 'rgba(130,70,20,.92)', false); R.apps.add(ap); }
+  }
+  buildDims(rm);
+  applyOptions();
+  return R;
+}
+
+function buildCeiling(rm, poly, H) {
+  const g = R.ceil, sh = new THREE.Shape(poly.map(p => new THREE.Vector2(p[0], -p[1]))), b = R.bounds;
+  const kitchen = rm.room === 'Kitchen';
+  if (kitchen) {
+    const cols = 5, rows = 4, pw = (b.x1 - b.x0) / cols, pd = (b.y1 - b.y0) / rows, rib = 12, depth = 3;
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      const x0 = b.x0 + i * pw + rib / 2, x1 = b.x0 + (i + 1) * pw - rib / 2, y0 = b.y0 + j * pd + rib / 2, y1 = b.y0 + (j + 1) * pd - rib / 2;
+      const p = new THREE.Path(); p.moveTo(x0, -y0); p.lineTo(x0, -y1); p.lineTo(x1, -y1); p.lineTo(x1, -y0); p.closePath(); sh.holes.push(p);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, depth, y1 - y0), new THREE.MeshStandardMaterial({ color: 0xf3f0e8, roughness: .95, side: THREE.BackSide }));
+      box.position.set((x0 + x1) / 2, H + depth / 2, (y0 + y1) / 2); g.add(box);
+      const mk = (w, d, px, pz) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, .5, d), mat.led); m.position.set(px, H + .5, pz); R.lighting.add(m); };
+      mk(x1 - x0 - 4, .8, (x0 + x1) / 2, y0 + 2); mk(x1 - x0 - 4, .8, (x0 + x1) / 2, y1 - 2); mk(.8, y1 - y0 - 4, x0 + 2, (y0 + y1) / 2); mk(.8, y1 - y0 - 4, x1 - 2, (y0 + y1) / 2);
+      const spot = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, .5, 14), mat.led); spot.position.set((x0 + x1) / 2, H + depth - .3, (y0 + y1) / 2); R.lighting.add(spot);
+    }
+    const lab = label('Coffers and LED glow: illustrative, not dimensional', (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, H - 3, .034, '#ffffff', 'rgba(150,90,20,.92)', true);
+    R.lighting.add(lab);
+  }
+  const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: .5, bevelEnabled: false }), mat.ceil);
+  slab.rotation.x = -Math.PI / 2; slab.position.y = H; slab.castShadow = false; slab.receiveShadow = true; g.add(slab);
+  slab.userData.info = kitchen ? 'Ceiling at 103 (assumed). Coffer grid is illustrative only.' : 'Ceiling (height assumed).';
+}
+
+function buildDims(rm) {
+  const d = R.dims, b = R.bounds;
+  // run overall widths
+  const groups = new Map();
+  for (const rec of R.cabs) {
+    const c = rec.c; if (['face', 'core'].includes(c.type)) continue;
+    const a = c.rot_deg * Math.PI / 180, eu = [Math.cos(a), Math.sin(a)], ev = [-Math.sin(a), Math.cos(a)];
+    const backLine = Math.round((c.x * ev[0] + c.y * ev[1]) * 2) / 2, hi = c.z_bottom >= 40 ? 'hi' : 'lo';
+    const k = `${Math.round(((c.rot_deg % 360) + 360) % 360)}|${backLine}|${hi}`;
+    if (!groups.has(k)) groups.set(k, { eu, ev, c0: c, hi, items: [], maxD: 0, zTop: 0 });
+    const gr = groups.get(k); gr.items.push(c); gr.maxD = Math.max(gr.maxD, c.depth);
+  }
+  for (const gr of groups.values()) {
+    if (gr.items.length < 2 && gr.hi === 'hi') continue;
+    let u0 = 1e9, u1 = -1e9;
+    gr.items.forEach(c => c.plan.forEach(p => { const u = p[0] * gr.eu[0] + p[1] * gr.eu[1]; u0 = Math.min(u0, u); u1 = Math.max(u1, u); }));
+    const o = gr.c0, pu = o.x * gr.eu[0] + o.y * gr.eu[1], off = gr.maxD + 3, zz = gr.hi === 'hi' ? Math.max(0, Math.min(...gr.items.map(c => c.z_bottom)) - 2) : 0.6;
+    const at = u => [o.x + gr.eu[0] * (u - pu) + gr.ev[0] * off, o.y + gr.eu[1] * (u - pu) + gr.ev[1] * off, zz];
+    dimLine(d, at(u0), at(u1), frac(u1 - u0) + (gr.hi === 'hi' ? ' upper run' : ' run'));
+  }
+  // room overall
+  const wlen = (b.x1 - b.x0), dlen = (b.y1 - b.y0);
+  if (rm.walls.length >= 3) {
+    dimLine(d, [b.x0, b.y1 + 8, 0.6], [b.x1, b.y1 + 8, 0.6], frac(wlen) + ' overall');
+    dimLine(d, [b.x1 + 8, b.y0, 0.6], [b.x1 + 8, b.y1, 0.6], frac(dlen) + ' overall', .026, [1.5, 0, 0]);
+  }
+  // island seating overhang (kitchen)
+  const isl = rm.cabinets.find(c => c.id === 'ISL'), top = (rm.countertops || []).find(t => t.id === 'CT-ISL');
+  if (isl && top) {
+    const minX = Math.min(...top.outline.map(p => p[0])), ox = Math.min(...isl.plan.map(p => p[0])), my = (isl.plan[0][1] + isl.plan[2][1]) / 2;
+    dimLine(d, [minX, my, 37], [ox, my, 37], frac(ox - minX) + ' seating overhang', .03, [0, 0, 1.5]);
+  }
+}
+
+// ---------- views ----------
+let VIEWS = {}, tween = null, topPlan = false;
+function roomViews(rm) {
+  const b = R.bounds, W = b.x1 - b.x0, D = b.y1 - b.y0, H = R.H, [cx, cy] = R.center, v = {};
+  const asp = Math.max(1.2, camera.aspect), tv = Math.tan(25 * Math.PI / 180), th = tv * asp;
+  const span = Math.max(W, D), dist = span * .8 + 50;
+  let sx = 0, sy = 0, tw = 0;                                   // look at the cabinet fronts: camera goes on the side the fronts face
+  rm.cabinets.filter(c => !['face', 'core'].includes(c.type)).forEach(c => { const q = c.rot_deg * Math.PI / 180; sx += -Math.sin(q) * c.width; sy += Math.cos(q) * c.width; tw += c.width; });
+  let dx = 0, dy = 1; if (tw && Math.hypot(sx, sy) > .25 * tw) { dx = sx / Math.hypot(sx, sy); dy = sy / Math.hypot(sx, sy); }
+  const od = Math.max(dist, 150), px = -dy, py = dx;
+  v['Overview'] = { p: [cx + dx * od * 1.05 + px * od * .3, od * .62 + H * .3, cy + dy * od * 1.05 + py * od * .3], t: [cx, H * .3, cy] };
+  R.walls.filter(w => !w.skip && w.L >= 24).forEach((w, i) => {
+    const dd = Math.max(w.L / 2 / th, H * .6 / tv) * 1.12 + 10;
+    v[`Wall: ${shortName(w.name).replace(/ wall$/i, '')}`] = { p: [w.mid[0] - w.out[0] * dd, H * .72, w.mid[1] - w.out[1] * dd], t: [w.mid[0], H * .38, w.mid[1]] };
+  });
+  if (rm.room === 'Kitchen') {
+    const isl = rm.cabinets.find(c => c.id === 'ISL'); if (isl) {
+      const x0 = Math.min(...isl.plan.map(p => p[0])), x1 = Math.max(...isl.plan.map(p => p[0])), y = (isl.plan[0][1] + isl.plan[2][1]) / 2;
+      v['Island seating'] = { p: [x0 - 80, 56, y + 20], t: [x0, 30, y] };
+      v['Island working'] = { p: [x1 + 42, 84, y + 70], t: [x1 - 25, 28, y - 8] };
+    }
+  }
+  const hp = Math.max(D / 2 / tv, W / 2 / th) * 1.12 + 20;
+  v['Top plan'] = { p: [cx, hp, cy + .01], t: [cx, 0, cy], top: true };
+  return v;
+}
+function go(name) {
+  const w = VIEWS[name]; if (!w) return;
+  tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: new THREE.Vector3(...w.p), t1: new THREE.Vector3(...w.t), s: performance.now() };
+  topPlan = !!w.top;
+  document.querySelectorAll('#views button').forEach(x => x.classList.toggle('on', x.textContent === name));
+}
+
+// ---------- UI ----------
+const toggles = {
+  'Doors': { on: true, f: v => { R.doorsOn = v; R.cabs.forEach(r => r.fr.visible = v); } },
+  'Wall cutaway': { on: true, f: v => { R.cut = v; } },
+  'Ceiling & lighting': { on: true, f: v => { R.ceilOn = v; R.ledStrips.forEach(l => l.visible = v); } },
+  'Dimensions': { on: false, f: v => R.dims.visible = v },
+  'Cabinet labels': { on: true, f: v => R.tags.visible = v },
+  'Appliance names': { on: true, f: v => R.apps.visible = v },
+  'Line work': { on: true, f: v => R.edges.forEach(e => e.visible = v) },
+  'Soft shadows (AO)': { on: true, f: v => photo = v },
+};
+const opts = { colors: {}, hw: 'Brass', top: 'Volakas honed', color: {} };
+function colorChoices(rm) {
+  const f = rm.finishes?.cabinet || '';
+  if (rm.room === 'Kitchen') return [['White Dove (default)', { all: 'White Dove' }], ['Island in Hale Navy', { all: 'White Dove', island: 'Hale Navy' }], ['All in warm greige', { all: 'Warm greige' }]];
+  if (/M2031/.test(f)) return [['Tafisa M2031 Creme De La Creme (default)', { all: 'Tafisa M2031 Creme De La Creme' }], ['White Dove painted', { all: 'White Dove' }], ['Warm greige', { all: 'Warm greige' }]];
+  if (/HG834/.test(f)) return [['Tafisa HG834 Iron Horse high gloss (default)', { all: 'Tafisa HG834 Iron Horse high gloss' }], ['White Dove painted', { all: 'White Dove' }], ['Warm greige', { all: 'Warm greige' }]];
+  return [['White Dove (default)', { all: 'White Dove' }], ['Warm greige', { all: 'Warm greige' }], ['Hale Navy', { all: 'Hale Navy' }]];
+}
+function setMatColor(m, name) { const c = COLORS[name]; m.color.setHex(c.hex); m.roughness = c.rough; m.needsUpdate = true; }
+function applyOptions() {
+  const ch = R.colorChoice || { all: 'White Dove' };
+  setMatColor(mat.paint, ch.all); setMatColor(mat.island, ch.island || ch.all);
+  const hw = HARDWARE[opts.hw]; mat.hw.color.setHex(hw[0]); mat.hw.roughness = hw[1]; mat.hw.metalness = hw[2];
+  const tp = TOPS[opts.top]; mat.stone.map = tp[0]; mat.stone.roughness = tp[1]; mat.stone.needsUpdate = true;
+}
+function mkBar(parent, title, items, def, pick) {
+  const d = document.createElement('div'); d.className = 'bar'; d.innerHTML = `<span>${title}</span>`; parent.append(d);
+  items.forEach(([n, v], i) => {
+    const b = document.createElement('button'); b.textContent = n; b.classList.toggle('on', i === def);
+    b.onclick = () => { pick(v, n); d.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); };
+    d.append(b);
+  });
+  return d;
+}
+const roomBar = document.getElementById('rooms'), vbar = document.getElementById('views'), tbar = document.getElementById('toggles'), obar = document.getElementById('optbars');
+const ROOMS = MODEL.rooms.filter(r => !/removed/i.test(r.status));
+function loadRoom(i) {
+  const rm = ROOMS[i]; buildRoom(rm);
+  roomBar.querySelectorAll('button').forEach((x, k) => x.classList.toggle('on', k === i));
+  // sun / shadow fit
+  const b = R.bounds, span = Math.max(b.x1 - b.x0, b.y1 - b.y0, 100);
+  Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 10, far: span * 4 }); sun.shadow.camera.updateProjectionMatrix();
+  sun.position.set(R.center[0] + span * .9, span * 1.1, R.center[1] + span * .9); sun.target.position.set(R.center[0], 0, R.center[1]); sun.target.updateMatrixWorld();
+  // views
+  VIEWS = roomViews(rm); vbar.innerHTML = '<span>Views</span>';
+  Object.keys(VIEWS).forEach(n => { const bt = document.createElement('button'); bt.textContent = n; bt.onclick = () => go(n); vbar.append(bt); });
+  // toggles
+  tbar.innerHTML = '<span>Show</span>';
+  for (const [n, t] of Object.entries(toggles)) {
+    if (n === 'Ceiling & lighting' && false) continue;
+    const bt = document.createElement('button'); bt.textContent = n; bt.classList.toggle('on', t.on);
+    bt.onclick = () => { t.on = !t.on; bt.classList.toggle('on', t.on); t.f(t.on); }; tbar.append(bt); t.f(t.on);
+  }
+  // options
+  obar.innerHTML = '';
+  const cc = colorChoices(rm); R.colorChoice = cc[0][1];
+  mkBar(obar, 'Cabinet color', cc, 0, v => { R.colorChoice = v; applyOptions(); });
+  mkBar(obar, 'Hardware', Object.keys(HARDWARE).map(k => [k, k]), Object.keys(HARDWARE).indexOf(opts.hw), v => { opts.hw = v; applyOptions(); });
+  if ((rm.countertops || []).length && R.topMat === mat.stone)
+    mkBar(obar, 'Countertop', Object.keys(TOPS).map(k => [k, k]), Object.keys(TOPS).indexOf(opts.top), v => { opts.top = v; applyOptions(); });
+  applyOptions();
+  controls.target.set(...VIEWS.Overview.t); camera.position.set(...VIEWS.Overview.p); tween = null; go('Overview'); tween = null;
+  info.textContent = `${roomLabel(rm.room)}: ${R.cabs.length} cabinet items. Click any cabinet or appliance for its size, fronts and notes.`;
+  if (sel) { scene.remove(sel); sel = null; }
+}
+const info = document.getElementById('info');
+ROOMS.forEach((r, i) => { const b = document.createElement('button'); b.textContent = roomLabel(r.room); b.onclick = () => loadRoom(i); roomBar.append(b); });
+document.getElementById('helpbtn').onclick = () => { const h = document.getElementById('help'); h.style.display = h.style.display === 'block' ? 'none' : 'block'; };
+
+// ---------- picking ----------
+const ray = new THREE.Raycaster(); let down = null, sel = null;
+renderer.domElement.addEventListener('pointerdown', e => down = [e.clientX, e.clientY]);
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), camera);
+  pickAt();
+});
+const shown = o => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+function pickAt() {
+  const hit = ray.intersectObjects(R.picks, false).find(h => shown(h.object) && !(h.object.material === mat.glassDoor));
+  if (sel) { scene.remove(sel); sel = null; }
+  if (!hit) { info.textContent = 'Click any cabinet or appliance for its size, fronts and notes.'; return; }
+  const o = hit.object;
+  if (o.userData.cab) {
+    const rec = R.cabs.find(r => r.id === o.userData.cab); showCab(rec);
+    sel = new THREE.Box3Helper(new THREE.Box3().setFromObject(rec.g), 0xd9822b); scene.add(sel);
+  } else info.textContent = o.userData.info || 'Existing wall';
+}
+function showCab(rec) {
+  const c = rec.c, cnt = {};
+  c.fronts.forEach(f => cnt[f.kind] = (cnt[f.kind] || 0) + 1);
+  const fr = Object.entries(cnt).map(([k, n]) => `${n} ${k}`).join(', ') || 'none (solid / no fronts)';
+  let t = `${c.id} - ${c.type}\nSize (W x D x H): ${frac(c.width)} x ${frac(c.depth)} x ${frac(c.height)}`;
+  if (c.z_bottom) t += `  (bottom at ${frac(c.z_bottom)})`;
+  t += `\nFronts: ${fr}`;
+  if (c.appliance) t += `\nAppliance: ${c.appliance}`;
+  if (c.notes) t += `\nNotes: ${c.notes}`;
+  if (rec.assumedHeight) t += `\nHeight is not in the model; drawn at 72 as a placeholder.`;
+  info.textContent = t;
+}
+
+// ---------- lights & loop ----------
+scene.add(new THREE.HemisphereLight(0xf4f1ea, 0x9a8f80, .8));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -.0004; sun.shadow.normalBias = .6;
+scene.add(sun, sun.target);
+const fill = new THREE.DirectionalLight(0xe8eefc, .6); fill.position.set(-200, 200, 300); scene.add(fill);
+const composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera); gtao.updateGtaoMaterial({ radius: 6, distanceExponent: 1.5, thickness: 4, scale: 1.2 }); composer.addPass(gtao);
+composer.addPass(new OutputPass());
+function resize() {
+  const w = wrap.clientWidth, h = wrap.clientHeight; if (!w || !h) return;
+  renderer.setSize(w, h, false); composer.setSize(w, h); renderer.domElement.style.width = w + 'px'; renderer.domElement.style.height = h + 'px';
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(wrap); resize();
+function frame() {
+  if (tween) {
+    const k = Math.min(1, (performance.now() - tween.s) / 900), e = k < .5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+    camera.position.lerpVectors(tween.p0, tween.p1, e); controls.target.lerpVectors(tween.t0, tween.t1, e); if (k === 1) tween = null;
+  }
+  controls.update();
+  if (R) {
+    const cp = camera.position;
+    for (const w of R.walls) { if (w.hidden) continue; w.g.visible = !(R.cut && ((cp.x - w.mid[0]) * w.out[0] + (cp.z - w.mid[1]) * w.out[1]) > 0); }
+    R.ceil.visible = R.ceilOn && cp.y < R.H - 1; R.lighting.visible = R.ceilOn && cp.y < R.H - 1;
+    const from_top = Math.atan2(Math.hypot(cp.x - controls.target.x, cp.z - controls.target.z), cp.y - controls.target.y);
+    for (const r of R.cabs) if (r.c.z_bottom >= 40 && r.c.type !== 'tall') r.g.visible = !(cp.y > R.H && from_top < .45);
+  }
+  if (photo) composer.render(); else renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(frame);
+loadRoom(ROOMS.findIndex(r => r.room === 'Kitchen') >= 0 ? ROOMS.findIndex(r => r.room === 'Kitchen') : 0);
+window.__viewer = {
+  ROOMS, loadRoom, go, frame, errors, THREE, scene, camera, controls, toggles, opts, applyOptions, pickAt, ray,
+  get R() { return R; },
+  counts: () => ({ room: R.rm.room, cabinets: R.cabs.length, ids: R.cabs.map(r => r.id) }),
+};
+console.log('viewer ready', ROOMS.length, 'rooms');
+</script>
+</body>
+</html>
